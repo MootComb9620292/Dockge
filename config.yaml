@@ -1,6 +1,6 @@
 name: "Dashy"
 description: "Dashy integration for Home Assistant"
-version: "0.3"
+version: "0.4"
 slug: "dashy_addon"
 init: false
 arch:
