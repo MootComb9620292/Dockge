@@ -1,22 +1,43 @@
-# -----------------------------------------------------------------------------------------
-# A light-weight alternative Docker image, using NGINX rather than Node.js to serve the app
-# This means that certain features that require server-side endpoints will not be available
-# -----------------------------------------------------------------------------------------
+FROM alpine:3.12 AS builder
 
-# Build Stage - Install dependencies + build the app
-FROM node:lts-alpine3.14 as build
-WORKDIR /dashy
-COPY package*.json .
-COPY yarn.lock .
+# Download QEMU, see https://github.com/docker/hub-feedback/issues/1261
+RUN QEMU_URL=https://github.com/balena-io/qemu/releases/download/v5.2.0%2Bbalena4/qemu-5.2.0.balena4-aarch64.tar.gz \
+    && apk add curl && curl -L $QEMU_URL | tar zxvf - -C . --strip-components 1
+
+# Start second (arm64v8) stage
+FROM arm64v8/alpine:3.12
+
+# Add QEMU from build stage
+COPY --from=builder qemu-aarch64-static /usr/bin
+
+# Install Node and Yarn
+RUN apk add --update --no-cache nodejs npm yarn
+
+# Define some ENV Vars
+ENV PORT=80 \
+    DIRECTORY=/app \
+    IS_DOCKER=true
+
+# Create and set the working directory
+WORKDIR ${DIRECTORY}
+
+# Copy over both 'package.json' and 'package-lock.json' (if available)
+COPY package*.json ./
+
+# Install project dependencies
 RUN yarn
+
+# Copy over all project files and folders to the working directory
 COPY . .
+
+# Build initial app for production
 RUN yarn build
 
-# Production Stage - Serve up built files with NGINX
-FROM nginx:alpine as production
-COPY ./docker/nginx.conf /etc/nginx/nginx.conf
-COPY --from=build /dashy/dist /usr/share/nginx/html
-EXPOSE 80
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+# Expose given port
+EXPOSE ${PORT}
 
-LABEL maintainer="Alicia Sykes <alicia@omg.lol>"
+# Finally, run start command to serve up the built application
+CMD [ "yarn", "build-and-start"]
+
+# Run simple healthchecks every 5 mins, to check the Dashy's everythings great
+HEALTHCHECK --interval=5m --timeout=2s --start-period=30s CMD yarn health-check
