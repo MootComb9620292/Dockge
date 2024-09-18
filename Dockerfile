@@ -1,51 +1,22 @@
-FROM node:18.19.1-alpine AS BUILD_IMAGE
+# -----------------------------------------------------------------------------------------
+# A light-weight alternative Docker image, using NGINX rather than Node.js to serve the app
+# This means that certain features that require server-side endpoints will not be available
+# -----------------------------------------------------------------------------------------
 
-# Set the platform to build image for
-ARG TARGETPLATFORM
-ENV TARGETPLATFORM=${TARGETPLATFORM:-linux/amd64}
+# Build Stage - Install dependencies + build the app
+FROM node:lts-alpine3.14 as build
+WORKDIR /dashy
+COPY package*.json .
+COPY yarn.lock .
+RUN yarn
+COPY . .
+RUN yarn build
 
-# Install additional tools needed if on arm64 / armv7
-RUN \
-  case "${TARGETPLATFORM}" in \
-  'linux/arm64') apk add --no-cache python3 make g++ ;; \
-  'linux/arm/v7') apk add --no-cache python3 make g++ ;; \
-  esac
+# Production Stage - Serve up built files with NGINX
+FROM nginx:alpine as production
+COPY ./docker/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /dashy/dist /usr/share/nginx/html
+EXPOSE 80
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
 
-# Create and set the working directory
-WORKDIR /app
-
-# Install app dependencies
-COPY package.json yarn.lock ./
-RUN yarn install --ignore-engines --immutable --no-cache --network-timeout 300000 --network-concurrency 1
-
-# Copy over all project files and folders to the working directory
-COPY . ./
-
-# Build initial app for production
-RUN yarn build --mode production --no-clean
-
-# Production stage
-FROM node:20.11.1-alpine3.19
-
-# Define some ENV Vars
-ENV PORT=8080 \
-  DIRECTORY=/app \
-  IS_DOCKER=true
-
-# Create and set the working directory
-WORKDIR ${DIRECTORY}
-
-# Update tzdata for setting timezone
-RUN apk add --no-cache tzdata
-
-# Copy built application from build phase
-COPY --from=BUILD_IMAGE /app ./
-
-# Finally, run start command to serve up the built application
-CMD [ "yarn", "build-and-start" ]
-
-# Expose the port
-EXPOSE ${PORT}
-
-# Run simple healthchecks every 5 mins, to check that everythings still great
-HEALTHCHECK --interval=5m --timeout=5s --start-period=30s CMD yarn health-check
+LABEL maintainer="Alicia Sykes <alicia@omg.lol>"
