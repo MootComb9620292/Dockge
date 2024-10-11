@@ -1,11 +1,11 @@
-name: "Dashy"
-description: "Dashy integration for Home Assistant"
+name: "Dockge"
+description: "Dockge integration for Home Assistant"
 version: "0.4"
-slug: "dashy_addon"
+slug: "dockge_addon"
 init: false
 arch:
   - aarch64
 ports:
-  8080/tcp: 8080
+  5001/tcp: 5001
 map:
   - share:rw
